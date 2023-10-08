@@ -24,8 +24,7 @@ namespace cclauson
     {
         private readonly ILogger _logger;
         private readonly FinnhubClient finnhubClient;
-        private static readonly string connectionString = "%StorageConnectionString%";
-        private readonly TableClient tableClient = new TableClient(connectionString, "values");
+        private readonly TableClient tableClient;
 
         public TechnicalAnalysis(ILoggerFactory loggerFactory)
         {
@@ -39,15 +38,17 @@ namespace cclauson
                 throw new KeyNotFoundException("Couldn't find finnhub client key");
             }
             finnhubClient = new(finnhubClientKey);
+            var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+            this.tableClient = new TableClient(connectionString, "values");
         }
 
         [Function("TechnicalAnalysis")]
-        public Task Run([TimerTrigger("%TimerSchedule%")] MyInfo myTimer)
+        public Task Run([TimerTrigger("%TimerSchedule%")] MyInfo myTimer, ExecutionContext context)
         {
-            return this.RunI(myTimer);
+            return this.RunI(myTimer, context);
         }
 
-        private async Task RunI(MyInfo myTimer) {
+        private async Task RunI(MyInfo myTimer, ExecutionContext context) {
             Quote quote = await this.finnhubClient.Stock.GetQuote("MSFT");
             decimal price = quote.Current;
             _logger.LogInformation($"C# Timer trigger function executed at: {DateTime.Now}");
