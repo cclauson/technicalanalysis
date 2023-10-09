@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using Azure;
 using Azure.Data.Tables;
 using Microsoft.Azure.Functions.Worker;
@@ -28,18 +29,30 @@ namespace cclauson
 
         public TechnicalAnalysis(ILoggerFactory loggerFactory)
         {
-            _logger = loggerFactory.CreateLogger<TechnicalAnalysis>();
-            var config = new ConfigurationBuilder().AddUserSecrets<Program>().Build();
-            // Based on:
-            // https://swharden.com/blog/2021-10-09-console-secrets/
-            // see for instructions on how to add client key value
-            var finnhubClientKey = config["finnhub-client-key"];
-            if (finnhubClientKey == null) {
-                throw new KeyNotFoundException("Couldn't find finnhub client key");
+            try {
+                _logger = loggerFactory.CreateLogger<TechnicalAnalysis>();
+                var config = new ConfigurationBuilder().AddUserSecrets<Program>().Build();
+                bool isLocal = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBSITE_INSTANCE_ID"));
+                string? finnhubClientKey;
+                if (isLocal) {
+                    // Based on:
+                    // https://swharden.com/blog/2021-10-09-console-secrets/
+                    // see for instructions on how to add client key value
+                    finnhubClientKey = config["finnhub-client-key"];
+                } else {
+                    finnhubClientKey = Environment.GetEnvironmentVariable("FinnhubClientKey");
+                }
+                if (finnhubClientKey == null) {
+                    throw new KeyNotFoundException("Couldn't find finnhub client key");
+                }
+                finnhubClient = new(finnhubClientKey);
+                var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
+                _logger.LogInformation($"Connection string: {connectionString}");
+                this.tableClient = new TableClient(connectionString, "values");
+            } catch (Exception e) {
+                _logger.LogInformation($"Exception: ${e}");
+                ExceptionDispatchInfo.Capture(e);
             }
-            finnhubClient = new(finnhubClientKey);
-            var connectionString = Environment.GetEnvironmentVariable("AzureWebJobsStorage");
-            this.tableClient = new TableClient(connectionString, "values");
         }
 
         [Function("TechnicalAnalysis")]
